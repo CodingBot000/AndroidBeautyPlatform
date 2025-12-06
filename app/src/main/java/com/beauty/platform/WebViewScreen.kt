@@ -28,6 +28,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.beauty.platform.WebAppInterface
 import com.beauty.platform.WebPageError
+import com.beauty.platform.utils.urlManager.isHomeUrl
+import com.beauty.platform.utils.JsFileLoader
 
 /**
  * 사용자 정의 WebChromeClient
@@ -85,7 +87,8 @@ class CustomWebChromeClient(
 class CustomWebViewClient(
     private val context: android.content.Context,
     private val onPageFinished: (Boolean) -> Unit,
-    private val onPageError: (WebPageError) -> Unit
+    private val onPageError: (WebPageError) -> Unit,
+    private val onHomePageLoaded: () -> Unit = {} // 홈페이지 로드 완료 콜백 추가
 ) : WebViewClient() {
     
     private fun shouldHandleInWebView(url: String): Boolean {
@@ -164,6 +167,15 @@ class CustomWebViewClient(
         view?.let {
             onPageFinished(it.canGoBack())
         }
+        
+        // 홈페이지일 경우 페이지 로드 감지 JS 주입
+        url?.let {
+            if (isHomeUrl(it)) {
+                JsFileLoader.loadPageLoadDetector(view?.context ?: return)?.let { js ->
+                    view.evaluateJavascript(js, null)
+                }
+            }
+        }
     }
 
     @Suppress("DEPRECATION")
@@ -210,7 +222,8 @@ fun ComposeWebView(
     progressBarHeight: Dp = 3.dp,
     showTopProgressBar: Boolean = true,
     onWebViewCreated: (webView: WebView) -> Unit,
-    onJsInterfaceReady: (WebAppInterface) -> Unit
+    onJsInterfaceReady: (WebAppInterface) -> Unit,
+    onHomePageLoaded: () -> Unit = {} // 홈페이지 로드 완료 콜백 추가
 ) {
     val context = LocalContext.current
     var progressState by remember { mutableIntStateOf(0) } // 내부 프로그레스 상태
@@ -282,9 +295,14 @@ fun ComposeWebView(
                     addJavascriptInterface(androidBridge, "AndroidBridge") // "AndroidBridge"라는 이름으로 JS에서 접근 가능
                     
                     // 기존 WebAppInterface도 유지 (FCM 토큰 등을 위해)
-                    val webAppInterface = WebAppInterface(context, this) { isLoggedIn ->
-                        Log.d("ComposeWebView", "로그인 상태: $isLoggedIn")
-                    }
+                    val webAppInterface = WebAppInterface(
+                        context = context, 
+                        webView = this,
+                        onCheckLoginResult = { isLoggedIn ->
+                            Log.d("ComposeWebView", "로그인 상태: $isLoggedIn")
+                        },
+                        onPageFullyLoaded = onHomePageLoaded // 페이지 로드 완료 콜백 추가
+                    )
                     addJavascriptInterface(webAppInterface, "Android") // 기존 이름 유지
                     onJsInterfaceReady(webAppInterface)
 
@@ -302,7 +320,8 @@ fun ComposeWebView(
                     webViewClient = CustomWebViewClient(
                         context = context,
                         onPageFinished = onCanGoBackChanged,
-                        onPageError = onError
+                        onPageError = onError,
+                        onHomePageLoaded = onHomePageLoaded
                     )
 //                    webViewClient = WebViewClient()  // 아무 처리 없이 기본
 //                    loadUrl("https://ed-unfoliated-nontumultuously.ngrok-free.dev")

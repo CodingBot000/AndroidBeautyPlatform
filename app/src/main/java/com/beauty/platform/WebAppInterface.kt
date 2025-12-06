@@ -8,6 +8,8 @@ import android.util.Log
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.widget.Toast
+import android.os.Handler
+import android.os.Looper
 import org.json.JSONObject
 
 /**
@@ -19,8 +21,10 @@ import org.json.JSONObject
 class WebAppInterface(
     private val context: Context,
     private val webView: WebView,
-    private val onCheckLoginResult: (Boolean) -> Unit
+    private val onCheckLoginResult: (Boolean) -> Unit,
+    private val onPageFullyLoaded: (() -> Unit)? = null
 ) {
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     // JavaScript에서 이 이름을 사용하여 메서드를 호출합니다. (예: Android.onLoginResult(...))
     @JavascriptInterface
@@ -82,5 +86,18 @@ class WebAppInterface(
                 (context as? Activity)?.finish()
             }
         }
+    }
+
+    @JavascriptInterface
+    fun onLoadComplete() {
+        Log.d("WebAppInterface", "페이지 모든 리소스 로드 완료")
+        // JS에서 호출되므로 메인 스레드로 전환
+        mainHandler.post {
+            onPageFullyLoaded?.invoke()
+        }
+    }
+
+    companion object {
+        const val INTERFACE_NAME = "Android"
     }
 }

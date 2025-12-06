@@ -55,6 +55,12 @@ dependencies {
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
 
+    // Lottie 애니메이션
+    implementation("com.airbnb.android:lottie-compose:6.5.2")
+    
+    // Splash Screen API
+    implementation("androidx.core:core-splashscreen:1.0.1")
+
     implementation(platform("com.google.firebase:firebase-bom:34.5.0"))
     implementation("androidx.browser:browser:1.7.0")
 

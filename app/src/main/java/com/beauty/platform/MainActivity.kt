@@ -56,10 +56,16 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.Alignment
+import kotlinx.coroutines.delay
+import com.beauty.platform.component.SplashOverlay
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import com.beauty.platform.utils.SPLASH_TIMEOUT
 import com.beauty.platform.utils.urlManager.isHomeUrl
 
 //startUrl
@@ -75,6 +81,10 @@ class MainActivity : ComponentActivity() {
     private var webViewInstance: WebView? = null
     private var backPressedTime: Long = 0
     private var backPressToast: Toast? = null
+    
+    // 스플래시 상태 관리
+    var showSplash by mutableStateOf(true)
+    private var splashDismissed = false
 
     companion object {
         private const val BACK_PRESS_TIMEOUT = 2000L
@@ -94,6 +104,10 @@ class MainActivity : ComponentActivity() {
 
     @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Android 12+ 기본 스플래시 스크린 즉시 종료
+        val splashScreen = installSplashScreen()
+        splashScreen.setKeepOnScreenCondition { false }
+        
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
@@ -200,6 +214,14 @@ class MainActivity : ComponentActivity() {
         this.webViewInstance = webView
     }
 
+    // 스플래시 dismiss 함수 (중복 호출 방지)
+    @Synchronized
+    fun dismissSplash() {
+        if (splashDismissed) return
+        splashDismissed = true
+        showSplash = false
+    }
+
 
     private fun handleHomeBackPress() {
         val currentTime = System.currentTimeMillis()
@@ -292,6 +314,12 @@ fun AppScreen(mainActivity: MainActivity) {
     // WebView의 로딩 진행 상태
     var webViewProgress by remember { mutableIntStateOf(0) }
 
+    // 3초 타임아웃 처리
+    LaunchedEffect(Unit) {
+        delay(SPLASH_TIMEOUT)
+        mainActivity.dismissSplash()
+    }
+
     // BackHandler 로직 - 커스텀 뒤로가기 처리
     BackHandler(enabled = true) {
         mainActivity.handleBackPress()
@@ -321,7 +349,9 @@ fun AppScreen(mainActivity: MainActivity) {
     ) { innerPadding ->
         // AppEntry 또는 WebViewContainer를 innerPadding을 적용하여 배치합니다.
         // 현재 로직에서는 AppEntry가 WebViewContainer 또는 DeniedScreen을 표시하므로 AppEntry를 사용합니다.
-        Column(modifier = Modifier.padding(innerPadding)) {
+        Box(modifier = Modifier.padding(innerPadding)) {
+            // 메인 컨텐츠 (뒤에서 로딩)
+            Column {
             AppEntry(
                 initialUrl = currentUrl,
                 onWebViewReady = { webView ->
@@ -351,8 +381,15 @@ fun AppScreen(mainActivity: MainActivity) {
                 },
                 onCanGoBackStateChanged = { canGo -> // canGoBack 상태 업데이트 콜백
                     canGoBack = canGo
+                },
+                onHomePageLoaded = { // 홈페이지 로드 완료 콜백 추가
+                    mainActivity.dismissSplash()
                 }
             )
+            }
+            
+            // 스플래시 오버레이 (위에 덮음)
+            SplashOverlay(visible = mainActivity.showSplash)
         }
     }
 }
@@ -458,7 +495,8 @@ fun AppEntry(
     onProgressChanged: (Int) -> Unit,
     onPageError: (WebPageError) -> Unit,
     onPageTitleChanged: (String?) -> Unit,
-    onCanGoBackStateChanged: (Boolean) -> Unit
+    onCanGoBackStateChanged: (Boolean) -> Unit,
+    onHomePageLoaded: () -> Unit = {} // 홈페이지 로드 완료 콜백 추가
 ) {
     // 권한 상태를 나타내는 열거형 또는 sealed class 사용 가능
 
@@ -503,7 +541,8 @@ fun AppEntry(
                 showTopProgressBar = true,
                 onJsInterfaceReady = {
 
-                }
+                },
+                onHomePageLoaded = onHomePageLoaded
             )
         }
         PermissionStatus.DENIED_PERMANENTLY -> {
