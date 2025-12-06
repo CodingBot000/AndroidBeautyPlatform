@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "233586433918",
+    "project_id": "beautyplatform-bd6ba",
+    "storage_bucket": "beautyplatform-bd6ba.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:233586433918:android:94e402e4152abdf38bdd2f",
+        "android_client_info": {
+          "package_name": "com.beauty.platform"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA3BqFW8TYzfaES-_284NjbrJPSnZ0-S2E"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

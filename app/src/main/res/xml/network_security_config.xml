@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+<!--    <domain-config cleartextTrafficPermitted="true">-->
+<!--        <domain includeSubdomains="false">localhost</domain>-->
+<!--        <domain includeSubdomains="false">127.0.0.1</domain>-->
+<!--        <domain includeSubdomains="false">10.0.2.2</domain> &lt;!&ndash; Android Emulator host IP &ndash;&gt;-->
+<!--        <domain includeSubdomains="true">192.168.0.13</domain>-->
+<!--    </domain-config>-->
+    <base-config cleartextTrafficPermitted="true" />
+    <!-- Production domains should use HTTPS -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">mimotok.com</domain>
+    </domain-config>
+</network-security-config>
