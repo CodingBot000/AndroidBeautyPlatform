@@ -9,6 +9,8 @@ import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.webkit.WebView
+import android.widget.Toast
+import java.net.URI
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -58,6 +60,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
+import com.beauty.platform.utils.urlManager.isHomeUrl
 
 //startUrl
 private val startUrl = "https://www.mimotok.com"
@@ -70,6 +73,13 @@ private val startUrl = "https://www.mimotok.com"
 class MainActivity : ComponentActivity() {
 
     private var webViewInstance: WebView? = null
+    private var backPressedTime: Long = 0
+    private var backPressToast: Toast? = null
+
+    companion object {
+        private const val BACK_PRESS_TIMEOUT = 2000L
+
+    }
 
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -189,6 +199,69 @@ class MainActivity : ComponentActivity() {
     fun setWebViewInstance(webView: WebView) {
         this.webViewInstance = webView
     }
+
+
+    private fun handleHomeBackPress() {
+        val currentTime = System.currentTimeMillis()
+        
+        if (currentTime - backPressedTime < BACK_PRESS_TIMEOUT) {
+            backPressToast?.cancel()
+            finishAffinity()
+        } else {
+            backPressedTime = currentTime
+            showExitToast()
+        }
+    }
+
+    private fun showExitToast() {
+        backPressToast?.cancel()
+        backPressToast = Toast.makeText(
+            this,
+            getString(R.string.back_press_exit_message),
+            Toast.LENGTH_SHORT
+        ).also { it.show() }
+    }
+
+    private fun navigateToHome() {
+        webViewInstance?.let { webView ->
+            val currentUrl = webView.url ?: startUrl
+            val homeUrl = extractLocaleAndCreateHomeUrl(currentUrl)
+            webView.loadUrl(homeUrl)
+        }
+    }
+
+    private fun extractLocaleAndCreateHomeUrl(currentUrl: String): String {
+        return try {
+            val uri = URI(currentUrl)
+            val path = uri.path ?: ""
+            
+            when {
+                path.startsWith("/ko") -> "$startUrl/ko"
+                path.startsWith("/en") -> "$startUrl/en"
+                path.startsWith("/ja") -> "$startUrl/ja"
+                path.startsWith("/zh-CN") -> "$startUrl/zh-CN"
+                path.startsWith("/zh-TW") -> "$startUrl/zh-TW"
+                else -> startUrl
+            }
+        } catch (e: Exception) {
+            startUrl
+        }
+    }
+
+    fun handleBackPress() {
+        val currentUrl = webViewInstance?.url ?: startUrl
+        
+        when {
+            isHomeUrl(currentUrl) -> handleHomeBackPress()
+            webViewInstance?.canGoBack() == true -> webViewInstance?.goBack()
+            else -> navigateToHome()
+        }
+    }
+
+    override fun onDestroy() {
+        backPressToast?.cancel()
+        super.onDestroy()
+    }
 }
 
 data class BottomNavItem(
@@ -219,9 +292,9 @@ fun AppScreen(mainActivity: MainActivity) {
     // WebView의 로딩 진행 상태
     var webViewProgress by remember { mutableIntStateOf(0) }
 
-    // BackHandler 로직을 AppScreen으로 이동
-    BackHandler(enabled = canGoBack) {
-        webViewInstance?.goBack()
+    // BackHandler 로직 - 커스텀 뒤로가기 처리
+    BackHandler(enabled = true) {
+        mainActivity.handleBackPress()
     }
     // 시스템 인셋을 자동으로 패딩하지 않게(전체 하얀 배경이 바 아래까지 깔리도록)
     Scaffold(
@@ -255,9 +328,8 @@ fun AppScreen(mainActivity: MainActivity) {
                     webViewInstance = webView
                     // MainActivity에 WebView 인스턴스 등록 (Deep Link 처리용)
                     mainActivity.setWebViewInstance(webView)
-//                    if (BuildConfig.DEBUG) {
-                        WebView.setWebContentsDebuggingEnabled(true)
-//                    }
+                    // Debug 모드에서만 WebView 디버깅 활성화
+                    WebView.setWebContentsDebuggingEnabled(true)
                     // 초기 URL 로드 (AppEntry에서 ComposeWebView가 생성된 후)
                     if (webView.url != currentUrl) {
                         webView.loadUrl(currentUrl)
