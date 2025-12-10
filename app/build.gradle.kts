@@ -60,6 +60,9 @@ dependencies {
     
     // Splash Screen API
     implementation("androidx.core:core-splashscreen:1.0.1")
+    
+    // SwipeRefresh
+    implementation("com.google.accompanist:accompanist-swiperefresh:0.32.0")
 
     implementation(platform("com.google.firebase:firebase-bom:34.5.0"))
     implementation("androidx.browser:browser:1.7.0")

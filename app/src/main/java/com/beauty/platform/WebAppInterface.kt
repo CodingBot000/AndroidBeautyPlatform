@@ -7,6 +7,7 @@ import android.net.Uri
 import android.util.Log
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
+import com.beauty.platform.component.NestedScrollWebView
 import android.widget.Toast
 import android.os.Handler
 import android.os.Looper

@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.webkit.WebView
+import com.beauty.platform.component.NestedScrollWebView
 import android.widget.Toast
 import java.net.URI
 import androidx.activity.ComponentActivity
@@ -69,16 +70,16 @@ import com.beauty.platform.utils.SPLASH_TIMEOUT
 import com.beauty.platform.utils.urlManager.isHomeUrl
 
 //startUrl
-private val startUrl = "https://www.mimotok.com"
+//private val startUrl = "https://www.mimotok.com"
 // startUrl
 //private val startUrl = "http://10.0.2.2:3000"
 //// macIpUrl
 //private val macIpUrl = "http://192.168.0.13:3000"
 ////ngrogUrl
-//private val startUrl = "https://ed-unfoliated-nontumultuously.ngrok-free.dev"
+private val startUrl = "https://ed-unfoliated-nontumultuously.ngrok-free.dev"
 class MainActivity : ComponentActivity() {
 
-    private var webViewInstance: WebView? = null
+    private var webViewInstance: NestedScrollWebView? = null
     private var backPressedTime: Long = 0
     private var backPressToast: Toast? = null
     
@@ -210,7 +211,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    fun setWebViewInstance(webView: WebView) {
+    fun setWebViewInstance(webView: NestedScrollWebView) {
         this.webViewInstance = webView
     }
 
@@ -307,7 +308,7 @@ fun AppScreen(mainActivity: MainActivity) {
 //    )
 
 
-    var webViewInstance by remember { mutableStateOf<WebView?>(null) }
+    var webViewInstance by remember { mutableStateOf<NestedScrollWebView?>(null) }
     var currentUrl by rememberSaveable { mutableStateOf(startUrl) }
     var canGoBack by remember { mutableStateOf(false) } // WebView 뒤로가기 가능 여부 상태
 
@@ -358,8 +359,8 @@ fun AppScreen(mainActivity: MainActivity) {
                     webViewInstance = webView
                     // MainActivity에 WebView 인스턴스 등록 (Deep Link 처리용)
                     mainActivity.setWebViewInstance(webView)
-                    // Debug 모드에서만 WebView 디버깅 활성화
-                    WebView.setWebContentsDebuggingEnabled(true)
+                    // Debug 모드에서만 WebView 디버깅 활성화  
+                    // WebView.setWebContentsDebuggingEnabled(false) // 프레임 레이트 로그 줄이기 위해 비활성화
                     // 초기 URL 로드 (AppEntry에서 ComposeWebView가 생성된 후)
                     if (webView.url != currentUrl) {
                         webView.loadUrl(currentUrl)
@@ -491,7 +492,7 @@ enum class PermissionStatus {
 @Composable
 fun AppEntry(
     initialUrl: String,
-    onWebViewReady: (WebView) -> Unit,
+    onWebViewReady: (NestedScrollWebView) -> Unit,
     onProgressChanged: (Int) -> Unit,
     onPageError: (WebPageError) -> Unit,
     onPageTitleChanged: (String?) -> Unit,

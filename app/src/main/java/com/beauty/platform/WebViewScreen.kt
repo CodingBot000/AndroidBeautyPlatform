@@ -16,9 +16,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.material3.LinearProgressIndicator
+import com.google.accompanist.swiperefresh.SwipeRefresh
+import com.google.accompanist.swiperefresh.rememberSwipeRefreshState
 import androidx.compose.runtime.*
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -30,6 +33,8 @@ import com.beauty.platform.WebAppInterface
 import com.beauty.platform.WebPageError
 import com.beauty.platform.utils.urlManager.isHomeUrl
 import com.beauty.platform.utils.JsFileLoader
+import com.beauty.platform.utils.REFRESH_THRESHOLD
+import com.beauty.platform.component.NestedScrollWebView
 
 /**
  * 사용자 정의 WebChromeClient
@@ -176,6 +181,51 @@ class CustomWebViewClient(
                 }
             }
         }
+        
+        // 스크롤 감지 JavaScript 주입 (더 강화된 throttle)
+        view?.evaluateJavascript("""
+            (function() {
+                if (window.scrollPositionChecker) {
+                    return; // 이미 설정됨
+                }
+                
+                let isAtTop = true;
+                let scrollThreshold = $REFRESH_THRESHOLD;
+                let lastCheckTime = 0;
+                const CHECK_INTERVAL = 100; // 100ms 최소 간격
+                
+                function checkScrollPosition() {
+                    const now = Date.now();
+                    if (now - lastCheckTime < CHECK_INTERVAL) {
+                        return; // 너무 자주 호출 방지
+                    }
+                    lastCheckTime = now;
+                    
+                    const newIsAtTop = window.pageYOffset <= scrollThreshold;
+                    if (newIsAtTop !== isAtTop) {
+                        isAtTop = newIsAtTop;
+                        if (typeof ScrollInterface !== 'undefined') {
+                            ScrollInterface.onScrollChanged(isAtTop);
+                        }
+                    }
+                }
+                
+                // 초기 상태 설정
+                checkScrollPosition();
+                
+                // 스크롤 이벤트 리스너 (더 강화된 throttle)
+                let scrollTimer = null;
+                window.addEventListener('scroll', function() {
+                    if (scrollTimer) {
+                        clearTimeout(scrollTimer);
+                    }
+                    scrollTimer = setTimeout(checkScrollPosition, 150);
+                }, { passive: true });
+                
+                // touchmove는 제거 (스크롤 이벤트만으로 충분)
+                window.scrollPositionChecker = true;
+            })();
+        """.trimIndent(), null)
     }
 
     @Suppress("DEPRECATION")
@@ -221,17 +271,40 @@ fun ComposeWebView(
     progressBarTrackColor: Color = Color(0x33FF4F9A),
     progressBarHeight: Dp = 3.dp,
     showTopProgressBar: Boolean = true,
-    onWebViewCreated: (webView: WebView) -> Unit,
+    onWebViewCreated: (webView: NestedScrollWebView) -> Unit,
     onJsInterfaceReady: (WebAppInterface) -> Unit,
     onHomePageLoaded: () -> Unit = {} // 홈페이지 로드 완료 콜백 추가
 ) {
     val context = LocalContext.current
     var progressState by remember { mutableIntStateOf(0) } // 내부 프로그레스 상태
+    var webViewInstance by remember { mutableStateOf<NestedScrollWebView?>(null) }
+    var isAtTopOfPage by remember { mutableStateOf(true) }
 
     val animatedProgress by animateFloatAsState(
         targetValue = progressState.coerceIn(0, 100) / 100f,
         label = "web_progress_animation"
     )
+
+    // SwipeRefresh 상태
+    var isRefreshing by remember { mutableStateOf(false) }
+    val swipeRefreshState = rememberSwipeRefreshState(isRefreshing = isRefreshing)
+    
+    // 리프레시 로직 (웹페이지 최상단일 때만)
+    LaunchedEffect(isRefreshing) {
+        if (isRefreshing) {
+            if (isAtTopOfPage) {
+                // 최상단에서 리프레시 실행
+                webViewInstance?.reload()
+                // 리프레시 완료 후 상태 초기화
+                delay(1000) // 1초 후에 리프레시 상태 해제
+            } else {
+                // 최상단이 아닐 때는 즉시 리프레시 상태 해제
+                delay(100) // 짧은 딜레이로 자연스러운 애니메이션
+            }
+            isRefreshing = false
+        }
+    }
+    
     // 파일 선택 결과를 처리하기 위한 콜백
     val filePathCallback = remember { mutableStateOf<ValueCallback<Array<Uri?>>?>(null) }
 
@@ -255,10 +328,20 @@ fun ComposeWebView(
         filePathCallback.value = null // 콜백 참조 해제
     }
 
-    Box(modifier) {
-        AndroidView(
-            factory = {
-                WebView(context).apply {
+    SwipeRefresh(
+        state = swipeRefreshState,
+        onRefresh = {
+            // 항상 isRefreshing = true로 설정하여 애니메이션이 시작되도록 함
+            // 실제 리프레시 여부는 LaunchedEffect에서 isAtTopOfPage로 결정
+            isRefreshing = true
+        },
+        modifier = modifier
+    ) {
+        Box {
+            AndroidView(
+                factory = {
+                    NestedScrollWebView(context).apply {
+                    webViewInstance = this // WebView 인스턴스 저장
                     onWebViewCreated(this) // WebView 생성 시 콜백 호출
 
                     layoutParams = ViewGroup.LayoutParams(
@@ -291,13 +374,22 @@ fun ComposeWebView(
                     settings.userAgentString = "$ua MyAppWebView/1.0 (Android)"
                     
                     // Android Bridge for Google Authentication
-                    val androidBridge = AndroidBridge(context, this)
+                    val androidBridge = AndroidBridge(context, this as WebView)
                     addJavascriptInterface(androidBridge, "AndroidBridge") // "AndroidBridge"라는 이름으로 JS에서 접근 가능
                     
+                    // WebView 스크롤 상태 감지 인터페이스
+                    val scrollInterface = object {
+                        @android.webkit.JavascriptInterface
+                        fun onScrollChanged(isAtTop: Boolean) {
+                            isAtTopOfPage = isAtTop
+                        }
+                    }
+                    addJavascriptInterface(scrollInterface, "ScrollInterface")
+
                     // 기존 WebAppInterface도 유지 (FCM 토큰 등을 위해)
                     val webAppInterface = WebAppInterface(
                         context = context, 
-                        webView = this,
+                        webView = this as WebView,
                         onCheckLoginResult = { isLoggedIn ->
                             Log.d("ComposeWebView", "로그인 상태: $isLoggedIn")
                         },
@@ -349,20 +441,21 @@ fun ComposeWebView(
                 it.stopLoading()
                 it.webChromeClient = null
                 // it.webViewClient = null // WebViewClient는 destroy 시 내부적으로 정리될 수 있음
-                it.destroy()
-            }
-        )
-
-        if (showTopProgressBar && progressState in 1..99) { // progressState 사용
-            LinearProgressIndicator(
-                progress = { animatedProgress },
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .fillMaxWidth()
-                    .height(progressBarHeight),
-                color = progressBarColor,
-                trackColor = progressBarTrackColor
+                    it.destroy()
+                }
             )
+
+            if (showTopProgressBar && progressState in 1..99) { // progressState 사용
+                LinearProgressIndicator(
+                    progress = { animatedProgress },
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .fillMaxWidth()
+                        .height(progressBarHeight),
+                    color = progressBarColor,
+                    trackColor = progressBarTrackColor
+                )
+            }
         }
     }
 }
