@@ -18,7 +18,10 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import com.google.firebase.messaging.FirebaseMessaging
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -88,8 +91,8 @@ class MainActivity : ComponentActivity() {
     private var splashDismissed = false
 
     companion object {
+        private const val TAG = "MainActivity"
         private const val BACK_PRESS_TIMEOUT = 2000L
-
     }
 
     private val notificationPermissionLauncher = registerForActivityResult(
@@ -112,6 +115,9 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        // FCM 초기화
+        initializeFCM()
+        
         requestNotificationPermission()
         handleNotificationIntent(intent)
         handleDeepLinkIntent(intent)
@@ -188,16 +194,48 @@ class MainActivity : ComponentActivity() {
         return sharedPref.getString("token", null)
     }
 
-    private fun handleNotificationIntent(intent: android.content.Intent?) {
-        intent?.extras?.let { extras ->
-            Log.d("FCM", "알림을 통해 앱이 실행되었습니다: $extras")
-            // 필요에 따라 특정 페이지로 이동하거나 특별한 처리를 수행
+    /**
+     * FCM 초기화
+     */
+    private fun initializeFCM() {
+        FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+            if (!task.isSuccessful) {
+                Log.w(TAG, "❌ FCM 토큰 발급 실패", task.exception)
+                return@addOnCompleteListener
+            }
+            
+            val token = task.result
+            Log.d(TAG, "✅ FCM 토큰 발급 성공")
+            Log.d(TAG, "  Token: ${token.take(20)}...")
+            
+            // 토큰을 SharedPreferences에 저장 (MyFirebaseMessagingService에서 서버 전송)
         }
     }
 
-    override fun onNewIntent(intent: Intent?) {
+    private fun handleNotificationIntent(intent: android.content.Intent?) {
+        intent?.extras?.let { bundle ->
+            val deepLink = bundle.getString("deepLink")
+            val pushType = bundle.getString("pushType")
+            
+            Log.d(TAG, "📱 알림 클릭으로 앱 실행")
+            Log.d(TAG, "  PushType: $pushType")
+            Log.d(TAG, "  DeepLink: $deepLink")
+            
+            // 웹뷰가 로드된 후 해당 페이지로 이동
+            if (deepLink != null) {
+                // 웹뷰가 준비되면 이동
+                lifecycleScope.launch {
+                    delay(2000) // 웹뷰 로드 대기
+                    navigateToDeepLink(deepLink)
+                }
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        handleNotificationIntent(intent)
         handleDeepLinkIntent(intent)
     }
 
@@ -278,6 +316,19 @@ class MainActivity : ComponentActivity() {
             isHomeUrl(currentUrl) -> handleHomeBackPress()
             webViewInstance?.canGoBack() == true -> webViewInstance?.goBack()
             else -> navigateToHome()
+        }
+    }
+    
+    /**
+     * 딥링크로 이동
+     */
+    private fun navigateToDeepLink(deepLink: String) {
+        webViewInstance?.let { webView ->
+            val baseUrl = startUrl
+            val fullUrl = "$baseUrl$deepLink"
+            
+            Log.d(TAG, "🔗 딥링크 이동: $fullUrl")
+            webView.loadUrl(fullUrl)
         }
     }
 
